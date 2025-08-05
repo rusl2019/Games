@@ -1,170 +1,242 @@
-const canvas = document.getElementById("gameCanvas");
-const ctx = canvas.getContext("2d");
-const scoreDisplay = document.getElementById("score");
-const highScoreDisplay = document.getElementById("highScore");
-const speedDisplay = document.getElementById("speed");
+const game = {
+  // --- CONSTANTS & DOM PROPERTIES ---
+  GRID_SIZE: 20,
+  BASE_SPEED: 120, // Initial speed in milliseconds
+  SPEED_INCREASE_FACTOR: 0.9, // Speed multiplier for each level up
 
-const gridSize = 20;
-const tileCount = canvas.width / gridSize;
-let snake = [{ x: 10, y: 10 }];
-let food = { x: 15, y: 15 };
-let dx = 0;
-let dy = 0;
-let score = 0;
-let highScore = localStorage.getItem("highScore") || 0;
-let gameLoop;
-let gameStarted = false;
-let foodEatenCount = 0;
-let baseSpeed = 120; // Initial speed in milliseconds
-let currentSpeed = baseSpeed;
-let speedIncreaseFactor = 0.85; // Decrease interval by 15% each time
+  // Colors
+  CANVAS_COLOR: "#1F2937",
+  SNAKE_COLOR: "#10B981",
+  FOOD_COLOR: "#EF4444",
 
-highScoreDisplay.textContent = `High Score: ${highScore}`;
-speedDisplay.textContent = `Speed: 100%`;
+  // Keyboard Keys
+  KEY: {
+    UP: "ArrowUp",
+    DOWN: "ArrowDown",
+    LEFT: "ArrowLeft",
+    RIGHT: "ArrowRight",
+  },
 
-function drawGame() {
-  // Clear canvas
-  ctx.fillStyle = "#1F2937";
-  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  // DOM Elements
+  canvas: document.getElementById("gameCanvas"),
+  ctx: null,
+  scoreDisplay: document.getElementById("score"),
+  highScoreDisplay: document.getElementById("highScore"),
+  speedDisplay: document.getElementById("speed"),
+  gameOverModal: document.getElementById("gameOverModal"),
+  finalScoreDisplay: document.getElementById("finalScore"),
+  restartButton: document.getElementById("restartButton"),
 
-  // Draw snake
-  snake.forEach((segment) => {
-    ctx.fillStyle = "#10B981";
-    ctx.fillRect(
-      segment.x * gridSize,
-      segment.y * gridSize,
-      gridSize - 2,
-      gridSize - 2
-    );
-  });
+  // --- GAME STATE ---
+  snake: [],
+  food: {},
+  dx: 0,
+  dy: 0,
+  score: 0,
+  highScore: 0,
+  foodEatenCount: 0,
+  currentSpeed: 0,
+  gameStarted: false,
+  lastUpdateTime: 0,
+  tileCount: 0,
 
-  // Draw food
-  ctx.fillStyle = "#EF4444";
-  ctx.fillRect(
-    food.x * gridSize,
-    food.y * gridSize,
-    gridSize - 2,
-    gridSize - 2
-  );
+  /**
+   * Initializes the game
+   */
+  init() {
+    this.ctx = this.canvas.getContext("2d");
+    this.tileCount = this.canvas.width / this.GRID_SIZE;
+    this.highScore = localStorage.getItem("highScore") || 0;
+    
+    this.setupEventListeners();
+    this.resetGame();
+    
+    // Start the main game loop
+    requestAnimationFrame(this.gameLoop.bind(this));
+  },
 
-  // Move snake
-  if (gameStarted) {
-    const head = { x: snake[0].x + dx, y: snake[0].y + dy };
+  /**
+   * Sets up all event listeners
+   */
+  setupEventListeners() {
+    document.addEventListener("keydown", this.handleKeyPress.bind(this));
+    this.restartButton.addEventListener("click", this.resetGame.bind(this));
+  },
 
-    // Check wall collision
-    if (
-      head.x < 0 ||
-      head.x >= tileCount ||
-      head.y < 0 ||
-      head.y >= tileCount
-    ) {
-      gameOver();
+  /**
+   * Main game loop, using requestAnimationFrame
+   * @param {number} currentTime The current time from the browser
+   */
+  gameLoop(currentTime) {
+    // Always request the next frame
+    requestAnimationFrame(this.gameLoop.bind(this));
+
+    // Control game speed based on time, not frame rate
+    const timeSinceLastUpdate = currentTime - this.lastUpdateTime;
+    if (timeSinceLastUpdate < this.currentSpeed) {
+      return; // Skip the update if it's not time yet
+    }
+    
+    this.lastUpdateTime = currentTime;
+
+    // Perform logic updates and drawing
+    this.update();
+    this.draw();
+  },
+  
+  /**
+   * Updates the game state (snake position, collision, score)
+   */
+  update() {
+    if (!this.gameStarted) return;
+
+    const head = { x: this.snake[0].x + this.dx, y: this.snake[0].y + this.dy };
+
+    // Check for wall collision
+    if (head.x < 0 || head.x >= this.tileCount || head.y < 0 || head.y >= this.tileCount) {
+      this.gameOver();
       return;
     }
 
-    // Check self collision
-    if (snake.some((segment) => segment.x === head.x && segment.y === head.y)) {
-      gameOver();
+    // Check for self collision
+    if (this.snake.some(segment => segment.x === head.x && segment.y === head.y)) {
+      this.gameOver();
       return;
     }
 
-    snake.unshift(head);
+    this.snake.unshift(head);
 
-    // Check food collision
-    if (head.x === food.x && head.y === food.y) {
-      foodEatenCount++;
-      // Base score of 10 plus additional points based on current speed
-      const speedLevel = Math.floor(foodEatenCount / 15);
-      score += 10 + speedLevel * 5;
-      scoreDisplay.textContent = `Score: ${score}`;
-      generateFood();
+    // Check for food consumption
+    if (head.x === this.food.x && head.y === this.food.y) {
+      this.foodEatenCount++;
+      const speedLevel = Math.floor(this.foodEatenCount / 15);
+      this.score += 10 + speedLevel * 5;
+      this.generateFood();
 
-      // Increase speed every 15 food eaten
-      if (foodEatenCount % 15 === 0) {
-        clearInterval(gameLoop);
-        currentSpeed = Math.max(30, currentSpeed * speedIncreaseFactor); // Minimum speed cap
-        gameLoop = setInterval(drawGame, currentSpeed);
-        // Update speed display (show as percentage of base speed)
-        const speedPercentage = Math.round((baseSpeed / currentSpeed) * 100);
-        speedDisplay.textContent = `Speed: ${speedPercentage}%`;
+      // Increase speed every 15 food items eaten
+      if (this.foodEatenCount > 0 && this.foodEatenCount % 15 === 0) {
+        this.currentSpeed = Math.max(30, this.currentSpeed * this.SPEED_INCREASE_FACTOR);
       }
     } else {
-      snake.pop();
+      this.snake.pop(); // Remove tail if not eating
     }
+  },
+
+  /**
+   * Draws all elements to the canvas
+   */
+  draw() {
+    // Canvas background
+    this.ctx.fillStyle = this.CANVAS_COLOR;
+    this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
+
+    // Snake
+    this.ctx.fillStyle = this.SNAKE_COLOR;
+    this.snake.forEach(segment => {
+      this.ctx.fillRect(
+        segment.x * this.GRID_SIZE,
+        segment.y * this.GRID_SIZE,
+        this.GRID_SIZE - 2,
+        this.GRID_SIZE - 2
+      );
+    });
+
+    // Food
+    this.ctx.fillStyle = this.FOOD_COLOR;
+    this.ctx.fillRect(
+      this.food.x * this.GRID_SIZE,
+      this.food.y * this.GRID_SIZE,
+      this.GRID_SIZE - 2,
+      this.GRID_SIZE - 2
+    );
+    
+    // Update UI Text
+    this.updateUIDisplay();
+  },
+
+  /**
+   * Generates a new food position
+   */
+  generateFood() {
+    this.food.x = Math.floor(Math.random() * this.tileCount);
+    this.food.y = Math.floor(Math.random() * this.tileCount);
+
+    // Ensure food doesn't spawn on the snake
+    while (this.snake.some(segment => segment.x === this.food.x && segment.y === this.food.y)) {
+      this.food.x = Math.floor(Math.random() * this.tileCount);
+      this.food.y = Math.floor(Math.random() * this.tileCount);
+    }
+  },
+  
+  /**
+   * Handles input from the keyboard
+   * @param {KeyboardEvent} e The keyboard event
+   */
+  handleKeyPress(e) {
+    if (!this.gameStarted && Object.values(this.KEY).includes(e.key)) {
+        this.gameStarted = true;
+    }
+    
+    switch (e.key) {
+      case this.KEY.UP:
+        if (this.dy !== 1) { this.dx = 0; this.dy = -1; }
+        break;
+      case this.KEY.DOWN:
+        if (this.dy !== -1) { this.dx = 0; this.dy = 1; }
+        break;
+      case this.KEY.LEFT:
+        if (this.dx !== 1) { this.dx = -1; this.dy = 0; }
+        break;
+      case this.KEY.RIGHT:
+        if (this.dx !== -1) { this.dx = 1; this.dy = 0; }
+        break;
+    }
+  },
+
+  /**
+   * Logic for when the game ends
+   */
+  gameOver() {
+    this.gameStarted = false;
+    
+    if (this.score > this.highScore) {
+      this.highScore = this.score;
+      localStorage.setItem("highScore", this.highScore);
+    }
+    
+    this.finalScoreDisplay.textContent = `Your Score: ${this.score}`;
+    this.gameOverModal.classList.remove("hidden");
+  },
+
+  /**
+   * Resets the game state to initial conditions
+   */
+  resetGame() {
+    this.snake = [{ x: 10, y: 10 }];
+    this.dx = 0;
+    this.dy = 0;
+    this.score = 0;
+    this.foodEatenCount = 0;
+    this.currentSpeed = this.BASE_SPEED;
+    this.gameStarted = false;
+    
+    this.generateFood();
+    this.updateUIDisplay();
+    this.draw(); // Draw the initial state
+    
+    this.gameOverModal.classList.add("hidden");
+  },
+  
+  /**
+   * Updates all text in the UI (score, speed, etc.)
+   */
+  updateUIDisplay() {
+    this.scoreDisplay.textContent = `Score: ${this.score}`;
+    this.highScoreDisplay.textContent = `High Score: ${this.highScore}`;
+    const speedPercentage = Math.round((this.BASE_SPEED / this.currentSpeed) * 100);
+    this.speedDisplay.textContent = `Speed: ${speedPercentage}%`;
   }
-}
+};
 
-function generateFood() {
-  food.x = Math.floor(Math.random() * tileCount);
-  food.y = Math.floor(Math.random() * tileCount);
-
-  // Ensure food doesn't spawn on snake
-  while (
-    snake.some((segment) => segment.x === food.x && segment.y === food.y)
-  ) {
-    food.x = Math.floor(Math.random() * tileCount);
-    food.y = Math.floor(Math.random() * tileCount);
-  }
-}
-
-function gameOver() {
-  clearInterval(gameLoop);
-  if (score > highScore) {
-    highScore = score;
-    localStorage.setItem("highScore", highScore);
-    highScoreDisplay.textContent = `High Score: ${highScore}`;
-  }
-  alert(`Game Over! Score: ${score}\nPress OK to restart`);
-  resetGame();
-}
-
-function resetGame() {
-  snake = [{ x: 10, y: 10 }];
-  food = { x: 15, y: 15 };
-  dx = 0;
-  dy = 0;
-  score = 0;
-  foodEatenCount = 0;
-  currentSpeed = baseSpeed;
-  scoreDisplay.textContent = `Score: ${score}`;
-  speedDisplay.textContent = `Speed: 100%`;
-  gameStarted = false;
-  clearInterval(gameLoop);
-  gameLoop = setInterval(drawGame, currentSpeed);
-}
-
-document.addEventListener("keydown", (e) => {
-  switch (e.key) {
-    case "ArrowUp":
-      if (dy !== 1) {
-        dx = 0;
-        dy = -1;
-        gameStarted = true;
-      }
-      break;
-    case "ArrowDown":
-      if (dy !== -1) {
-        dx = 0;
-        dy = 1;
-        gameStarted = true;
-      }
-      break;
-    case "ArrowLeft":
-      if (dx !== 1) {
-        dx = -1;
-        dy = 0;
-        gameStarted = true;
-      }
-      break;
-    case "ArrowRight":
-      if (dx !== -1) {
-        dx = 1;
-        dy = 0;
-        gameStarted = true;
-      }
-      break;
-  }
-});
-
-// Start game
-gameLoop = setInterval(drawGame, currentSpeed);
+// --- START THE GAME ---
+game.init();

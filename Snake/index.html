@@ -9,7 +9,7 @@
 </head>
 
 <body class="bg-gray-900 flex items-center justify-center min-h-screen">
-    <div class="flex flex-col items-center space-y-4">
+    <div class="relative flex flex-col items-center space-y-4">
         <h1 class="text-4xl font-bold text-white">Snake Game</h1>
         <div class="flex space-x-4">
             <div id="score" class="text-xl text-white">Score: 0</div>
@@ -20,6 +20,12 @@
         <div class="text-white text-center">
             <p>Use arrow keys to control the snake</p>
             <p>Press any arrow key to start</p>
+        </div>
+
+        <div id="gameOverModal" class="hidden absolute flex-col items-center justify-center bg-gray-800 bg-opacity-80 rounded-lg p-8" style="top: 50%; left: 50%; transform: translate(-50%, -50%);">
+            <h2 class="text-4xl text-white font-bold">Game Over!</h2>
+            <p id="finalScore" class="text-2xl text-white mt-2"></p>
+            <button id="restartButton" class="mt-6 px-6 py-2 bg-emerald-500 hover:bg-emerald-600 text-white rounded-lg font-semibold">Restart</button>
         </div>
     </div>
 
